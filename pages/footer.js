@@ -1,9 +1,9 @@
 import Link from 'next/link';
 import React, { useState, useEffect } from 'react';
-import { 
-  FaGithubAlt, 
-  FaHeartbeat, 
-  FaRegHospital, 
+import {
+  FaGithubAlt,
+  FaHeartbeat,
+  FaRegHospital,
   FaHeart,
   FaInfoCircle,
   FaCog,
@@ -27,7 +27,7 @@ export default function Footer() {
 
   useEffect(() => {
     setIsVisible(true);
-    
+
     // Check if PWA can be installed
     const checkInstallPrompt = () => {
       const handleBeforeInstallPrompt = (e) => {
@@ -35,16 +35,16 @@ export default function Footer() {
         setDeferredPrompt(e);
         setShowInstallButton(true);
       };
-      
+
       window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
-    
+
     checkInstallPrompt();
   }, []);
 
   const handleInstall = async () => {
     if (!deferredPrompt) return;
-    
+
     try {
       const result = await deferredPrompt.prompt();
       if (result.outcome === 'accepted') {
@@ -64,10 +64,10 @@ export default function Footer() {
         <div className={styles.circleElement}></div>
         <div className={styles.circleElement}></div>
       </div>
-      
+
       <div className={styles.container}>
         <div className={`${styles.content} ${isVisible ? styles.visible : ''}`}>
-          
+
           {/* Logo & Mission */}
           <div className={styles.section}>
             <div className={styles.logoSection}>
@@ -111,6 +111,12 @@ export default function Footer() {
                   Contributors
                 </Link>
               </li>
+              <li>
+  <Link href="/faq" className={styles.footerLink}>
+    <FaRegHospital className={styles.linkIcon} />
+    FAQ
+  </Link>
+</li>
             </ul>
           </div>
 
@@ -150,19 +156,19 @@ export default function Footer() {
             <h4 className={styles.sectionTitle}>Connect With Us</h4>
             <div className={styles.socialLinks}>
               <a
-                href="https://github.com/Dipanita45/HEALCONNECT"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={styles.socialLink}
-                aria-label="GitHub"
-              >
-                <FaGithubAlt />
-                <span className={styles.socialTooltip}>Visit our GitHub</span>
-              </a>
+  href="https://github.com/Dipanita45/HEALCONNECT"
+  target="_blank"
+  rel="noopener noreferrer external"
+  className={styles.socialLink}
+  aria-label="GitHub"
+>
+  <FaGithubAlt />
+  <span className={styles.socialTooltip}>Visit our GitHub</span>
+</a>
               <a
-                href="https://discord.gg/WbvxB2F4G"
-                target="_blank"
-                rel="noopener noreferrer"
+  href="https://discord.gg/WbvxB2F4G"
+  target="_blank"
+  rel="noopener noreferrer external"
                 className={styles.socialLink}
                 aria-label="Discord"
               >
@@ -172,7 +178,7 @@ export default function Footer() {
               <a
                 href="https://www.linkedin.com/in/dipanita-mondal-6a9257306/"
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="noopener noreferrer external"
                 className={styles.socialLink}
                 aria-label="LinkedIn"
               >
@@ -181,16 +187,22 @@ export default function Footer() {
               </a>
             </div>
             <p className={styles.feedbackText}>
-              Have feedback or ideas? Reach out — we had love to hear from you!
+              Have feedback or ideas? Reach out — we would love to hear from you!
             </p>
-            
+            <p className={styles.contactEmail}>
+  <IoMdMail className={styles.linkIcon} />
+  <a href="mailto:support@healconnect.com" className={styles.footerLink}>
+    support@healconnect.com
+  </a>
+</p>
+
             {/* Subscription form */}
             <div className={styles.subscription}>
               <p className={styles.subscriptionText}>Stay updated with our latest features</p>
               <form className={styles.subscriptionForm}>
-                <input 
-                  type="email" 
-                  placeholder="Your email address" 
+                <input
+                  type="email"
+                  placeholder="Your email address"
                   className={styles.subscriptionInput}
                 />
                 <button type="submit" className={styles.subscriptionButton} aria-label="Subscribe">

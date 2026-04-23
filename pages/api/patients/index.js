@@ -1,8 +1,9 @@
 
 import Joi from 'joi';
-import { dbOperations, where, orderBy } from '../../../lib/db/operations';
+import { dbOperations, where, orderBy, limit } from '../../../lib/db/operations';
 import { Collections } from '../../../lib/db/schema';
 import { withErrorHandling, withMethods, withAuth, validate, rateLimit, compose } from '../../../lib/api/middleware';
+import { normalizePhoneNumber } from '../../../lib/phoneUtils';
 
 // Validation Schemas
 const createPatientSchema = Joi.object({
@@ -42,20 +43,30 @@ async function getPatients(req, res) {
 
   const constraints = [];
 
-  // Security: If user is a doctor, force them to see only their patients?
-  // For now, if doctorId is provided, filter by it.
-  // Ideally, req.user.uid should be used if the user IS a doctor.
+  // Enforce RBAC
+  const user = req.user;
 
-  if (doctorId) {
-    constraints.push(where('doctorId', '==', doctorId));
+  if (user.role === 'doctor') {
+    // Force constraint to filter strictly by the doctor's uid
+    constraints.push(where('doctorId', '==', user.uid));
+  } else if (user.role === 'admin') {
+    // Admins can provide a filter
+    if (doctorId) {
+      constraints.push(where('doctorId', '==', doctorId));
+    }
+  } else {
+    // Reject unauthorized cross-access
+    return res.status(403).json({ success: false, message: 'Forbidden: Insufficient privileges to access patient records.' });
   }
+
   if (status) {
     constraints.push(where('status', '==', status));
   }
   constraints.push(orderBy('createdAt', 'desc'));
 
-  // TODO: Implement limit in dbOperations if not already present, currently ignoring queryLimit in db call params
-
+  if (queryLimit) {
+    constraints.push(limit(Number(queryLimit)));
+  }
   const result = await dbOperations.getAll(Collections.PATIENTS, constraints);
 
   if (result.success) {
@@ -67,7 +78,10 @@ async function getPatients(req, res) {
 
 async function createPatient(req, res) {
   const patientData = req.body;
-  // Input already validated by middleware
+  // Normalize phone number if present
+  if (patientData.phone) {
+    patientData.phone = normalizePhoneNumber(patientData.phone);
+  }
 
   // Add metadata
   const dataToSave = {

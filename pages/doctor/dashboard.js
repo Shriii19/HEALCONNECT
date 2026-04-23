@@ -9,15 +9,21 @@ const DoctorSidebar = dynamic(() => import("@components/Sidebar/DoctorSidebar"),
 const AlertNotifications = dynamic(() => import("@components/DoctorComponents/AlertNotifications"), { ssr: false });
 
 // FetchPatients can stay, but we will override its behavior for offline caching
-import FetchPatients from "../../lib/fetchPatients";
+import useFetchPatients from "../../lib/fetchPatients";
+import useDashboardStats from "../../lib/hooks/useDashboardStats";
 import { useMultiPatientMonitor } from "../../lib/useAlertMonitor";
+import CardSkeleton from "@components/CardSkeleton";
+import TableSkeleton from "@components/TableSkeleton";
 
 export default function DoctorDashboard() {
   const router = useRouter();
+  const { patients: fetchedPatients, loading: patientsLoading, error: patientsError } = useFetchPatients();
+  const { stats, loading: statsLoading, error: statsError } = useDashboardStats();
+  
   const [patients, setPatients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isOffline, setIsOffline] = useState(typeof window !== "undefined" ? !navigator.onLine : false);
   const [doctorInfo, setDoctorInfo] = useState({ id: null, name: null });
 
   // Enable real-time patient monitoring for alert generation
@@ -48,47 +54,34 @@ export default function DoctorDashboard() {
     }
   }, []);
 
-  // Fetch patients with offline support
+  // Handle loading and state sync from hooks
   useEffect(() => {
-    async function fetchPatients() {
-      if (navigator.onLine) {
-        try {
-          const { loading, error, patients } = await FetchPatients(); // make sure FetchPatients returns a promise
-          setLoading(loading);
-          setError(error);
-          setPatients(patients || []);
-          localStorage.setItem("patientsData", JSON.stringify(patients || []));
-        } catch (err) {
-          setError("Failed to fetch patients.");
-          const cached = localStorage.getItem("patientsData");
-          if (cached) setPatients(JSON.parse(cached));
-        } finally {
-          setLoading(false);
-        }
+    if (!patientsLoading) {
+      if (fetchedPatients.length > 0) {
+        setPatients(fetchedPatients);
+        localStorage.setItem("patientsData", JSON.stringify(fetchedPatients));
       } else {
-        // Offline: read from cache
+        // Fallback to cache if no online data returned
         const cached = localStorage.getItem("patientsData");
-        if (cached) {
-          setPatients(JSON.parse(cached));
-          setLoading(false);
-        } else {
-          setError("No cached data available.");
-          setLoading(false);
-        }
+        if (cached) setPatients(JSON.parse(cached));
       }
+      setLoading(false);
     }
-
-    fetchPatients();
-  }, []);
+    if (patientsError) {
+      setError(patientsError);
+      const cached = localStorage.getItem("patientsData");
+      if (cached) setPatients(JSON.parse(cached));
+    }
+  }, [patientsLoading, fetchedPatients, patientsError]);
 
   const summaryStats = [
     {
       icon: <FaUsers size={36} className="text-blue-500 dark:text-gray-100" />,
       label: "Total Patients",
-      value: patients.length.toString(),
+      value: loading ? "..." : (stats.patients || patients.length).toString(),
     },
-    { icon: <FaFileAlt size={36} className="text-blue-500 dark:text-gray-100" />, label: "Total Reports", value: "02" },
-    { icon: <FaBell size={36} className="text-blue-500 dark:text-gray-100" />, label: "Appointments", value: "00" },
+    { icon: <FaFileAlt size={36} className="text-blue-500 dark:text-gray-100" />, label: "Total Reports", value: statsLoading ? "..." : stats.reports.toString().padStart(2, '0') },
+    { icon: <FaBell size={36} className="text-blue-500 dark:text-gray-100" />, label: "Appointments", value: statsLoading ? "..." : stats.appointments.toString().padStart(2, '0') },
   ];
 
   const getStatusClasses = (status) => {
@@ -132,18 +125,27 @@ export default function DoctorDashboard() {
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 py-4 md:px-4 gap-4">
-          {summaryStats.map((stat, i) => (
-            <div
-              key={i}
-              className="bg-white dark:bg-gray-800 shadow-lg rounded-md flex items-center justify-between p-3 border-b-4 border-blue-500 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium group"
-            >
-              {stat.icon}
-              <div className="text-right">
-                <p className="text-2xl">{stat.value}</p>
-                <p>{stat.label}</p>
-              </div>
-            </div>
-          ))}
+          {loading ? (
+  <>
+    <CardSkeleton />
+    <CardSkeleton />
+    <CardSkeleton />
+    <CardSkeleton />
+  </>
+) : (
+  summaryStats.map((stat, i) => (
+    <div
+      key={i}
+      className="bg-white dark:bg-gray-800 shadow-lg rounded-md flex items-center justify-between p-3 border-b-4 border-blue-500 dark:border-gray-600 text-gray-700 dark:text-gray-200 font-medium group"
+    >
+      {stat.icon}
+      <div className="text-right">
+        <p className="text-2xl">{stat.value}</p>
+        <p>{stat.label}</p>
+      </div>
+    </div>
+  ))
+)}
         </div>
 
         <h1 className="prose lg:prose-xl font-bold md:ml-4 dark:text-gray-100">All Clients</h1>
@@ -151,52 +153,55 @@ export default function DoctorDashboard() {
         <div className="mt-4 md:px-4">
           <div className="w-full overflow-hidden rounded-lg shadow-xs bg-white dark:bg-gray-800">
             <div className="w-full overflow-x-auto py-4 md:px-4">
-              {loading && <p>Loading patients...</p>}
-              {error && <p className="text-red-500">{error}</p>}
-              {!loading && !error && (
-                <table className="w-full">
-                  <thead>
-                    <tr className="text-xs font-semibold tracking-wide text-left text-gray-500 uppercase border-b dark:border-gray-700 bg-gray-50 dark:text-gray-400 dark:bg-gray-800">
-                      <th className="px-4 py-3">Patient</th>
-                      <th className="px-4 py-3">ID</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Date</th>
+              <table className="w-full">
+                <thead>
+                  <tr className="text-xs font-semibold tracking-wide text-left text-gray-500 uppercase border-b dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                    <th className="px-4 py-3">Client</th>
+                    <th className="px-4 py-3">ID</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Date</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y dark:divide-gray-700 dark:bg-gray-800">
+                  {loading && (
+                    <tr>
+                      <td colSpan="4" className="px-4 py-6">
+                        <TableSkeleton rows={5} cols={4} />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y dark:divide-gray-700 dark:bg-gray-800">
-                    {patients.map((p, idx) => (
-                      <tr
-                        key={idx}
-                        className="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-400"
-                      >
-                        <td className="px-4 py-3">
-                          <div className="flex items-center text-sm">
-                            <div className="relative hidden w-8 h-8 mr-3 rounded-full md:block">
-                              <Image
-                                className="object-cover w-full h-full rounded-full"
-                                src="/hacker.png"
-                                alt={p.name}
-                                loading="lazy"
-                                width={512}
-                                height={512}
-                              />
-                            </div>
-                            <div>
-                              <p className="font-semibold">{p.name}</p>
-                              <p className="text-xs text-gray-600 dark:text-gray-400">{p.doctor}</p>
-                            </div>
+                  )}
+                  {!loading && patients.map((p, idx) => (
+                    <tr
+                      key={idx}
+                      className="bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-900 text-gray-700 dark:text-gray-400"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center text-sm">
+                          <div className="relative hidden w-8 h-8 mr-3 rounded-full md:block">
+                            <Image
+                              className="object-cover w-full h-full rounded-full"
+                              src="/hacker.png"
+                              alt={p.name}
+                              loading="lazy"
+                              width={512}
+                              height={512}
+                            />
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm">{p.id}</td>
-                        <td className="px-4 py-3 text-xs">
-                          <span className={getStatusClasses(p.status)}>{p.status}</span>
-                        </td>
-                        <td className="px-4 py-3 text-sm">{p.date}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+                          <div>
+                            <p className="font-semibold">{p.name}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400">{p.doctor}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{p.id}</td>
+                      <td className="px-4 py-3 text-xs">
+                        <span className={getStatusClasses(p.status)}>{p.status}</span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{p.date}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

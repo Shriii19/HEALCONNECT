@@ -5,13 +5,15 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 const ApexCharts = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-export default function ECGMonitor() {
+export default function ECGMonitor({ deviceId }) {
   const [data, setData] = useState([]);
   const [deviceStatus, setDeviceStatus] = useState(false);
   const [ecgData, setECGData] = useState([{ x: Date.now(), y: 0 }]);
 
   useEffect(() => {
-    const docRef = doc(db, "devices", "0001");
+    if (!deviceId) return;
+
+    const docRef = doc(db, "devices", deviceId);
 
     // Get initial data
     getDoc(docRef)
@@ -36,7 +38,7 @@ export default function ECGMonitor() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [deviceId]);
 
   const [options, setOptions] = useState({
     chart: {
@@ -72,31 +74,34 @@ export default function ECGMonitor() {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const newECGData = ecgData ? [...ecgData] : [];
       const pulse = data.pulse;
 
-      if (pulse >= -300 && pulse <= 300) {
-        newECGData.push({ x: Date.now(), y: 0 });
-      } else if (pulse > 600) {
-        const pulseArray = [
-          { x: Date.now(), y: 64 },
-          { x: Date.now() + 5, y: 168 },
-          // ... rest of your pulseArray ...
-          { x: Date.now() + 165, y: -40 },
-        ];
-        newECGData.push(...pulseArray);
-      } else {
-        return;
-      }
+      setECGData((prevData) => {
+        const newECGData = prevData ? [...prevData] : [];
 
-      if (newECGData.length > 1000) {
-        newECGData.shift();
-      }
-      setECGData(newECGData);
+        if (pulse >= -300 && pulse <= 300) {
+          newECGData.push({ x: Date.now(), y: 0 });
+        } else if (pulse > 600) {
+          const pulseArray = [
+            { x: Date.now(), y: 64 },
+            { x: Date.now() + 5, y: 168 },
+            // ... rest of your pulseArray ...
+            { x: Date.now() + 165, y: -40 },
+          ];
+          newECGData.push(...pulseArray);
+        } else {
+          return prevData;
+        }
+
+        if (newECGData.length > 1000) {
+          newECGData.shift();
+        }
+        return newECGData;
+      });
     }, 100);
 
     return () => clearInterval(interval);
-  }, [ecgData, data.pulse]);
+  }, [data.pulse]);
 
   return (
     <>

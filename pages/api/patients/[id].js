@@ -2,6 +2,8 @@
 import { dbOperations } from '../../../lib/db/operations';
 import { Collections } from '../../../lib/db/schema';
 import { withErrorHandling } from '../../../lib/api/middleware';
+import { monitorAndAlert } from '../../../lib/alertSystem';
+import { normalizePhoneNumber } from '../../../lib/phoneUtils';
 
 async function handler(req, res) {
   const { method, query } = req;
@@ -21,7 +23,7 @@ async function handler(req, res) {
 
 async function getPatient(id, res) {
   const result = await dbOperations.getById(Collections.PATIENTS, id);
-  
+
   if (result.success) {
     res.status(200).json({ success: true, data: result.data });
   } else {
@@ -30,9 +32,21 @@ async function getPatient(id, res) {
 }
 
 async function updatePatient(id, data, res) {
+  // Normalize phone number if being updated
+  if (data.phone) {
+    data.phone = normalizePhoneNumber(data.phone);
+  }
+
   const result = await dbOperations.update(Collections.PATIENTS, id, data);
-  
+
   if (result.success) {
+    // If thresholds were updated, trigger a re-evaluation of vitals
+    if (data.thresholds || data.heartRate || data.oxygen || data.temperature || data.bloodPressure) {
+      monitorAndAlert(id).catch(err => {
+        console.error('Background alert monitoring (on patient update) failed:', err);
+      });
+    }
+
     res.status(200).json({ success: true, message: 'Patient updated successfully' });
   } else {
     res.status(500).json({ success: false, message: result.error });
@@ -41,7 +55,7 @@ async function updatePatient(id, data, res) {
 
 async function deletePatient(id, res) {
   const result = await dbOperations.delete(Collections.PATIENTS, id);
-  
+
   if (result.success) {
     res.status(200).json({ success: true, message: 'Patient deleted successfully' });
   } else {
